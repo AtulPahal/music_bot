@@ -173,9 +173,3 @@ All settings via `.env`. See `.env.example` for the full list.
 | `YT_RADIO_ENABLED` | No | true | Auto-suggest on queue end |
 | `SUGGESTION_TIMEOUT` | No | 30 | Suggestion auto-dismiss seconds |
 | `AUTO_DISCONNECT_TIMEOUT` | No | 300 | Idle disconnect seconds |
-
----
-
-## License
-
-MIT
