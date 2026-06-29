@@ -6,7 +6,7 @@ data/
 logs/
 
 # uv
-uv.lock
+
 .venv/
 
 # Python
