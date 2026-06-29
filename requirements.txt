@@ -1,0 +1,18 @@
+# Requirements file for pip users.
+#
+# If you use uv (recommended), run `uv sync` instead — it reads
+# dependencies from pyproject.toml directly and handles the lockfile.
+#
+# ## pip usage (without uv):
+#   pip install -r requirements.txt
+#
+# ## uv usage (recommended):
+#   uv sync
+#   uv run music-bot
+
+discord.py>=2.5.0,<3.0
+davey>=0.1.0              # native voice support (required by discord.py 2.7+)
+ytmusicapi>=1.8.0
+yt-dlp>=2024.12.0
+python-dotenv>=1.0.0
+PyNaCl>=1.5.0

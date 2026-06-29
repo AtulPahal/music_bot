@@ -1,0 +1,40 @@
+[project]
+name = "music-bot"
+version = "0.1.0"
+description = "A Discord music bot powered by ytmusicapi and yt-dlp"
+requires-python = ">=3.11"
+authors = []
+license = "MIT"
+dependencies = [
+    "discord.py>=2.5.0,<3.0",
+    "ytmusicapi>=1.8.0",
+    "yt-dlp>=2024.12.0",
+    "python-dotenv>=1.0.0",
+    "PyNaCl>=1.5.0",
+    "davey>=0.1.6",
+]
+
+[project.scripts]
+music-bot = "bot.__main__:entry_point"
+
+[build-system]
+requires = ["setuptools>=65"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["bot*"]
+
+[tool.uv]
+required-version = ">=0.6.0"
+package = true
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.25.0",
+]
+
+[tool.pytest.ini_options]
+python_functions = "test_*"
+testpaths = ["tests"]
+asyncio_default_fixture_loop_scope = "function"

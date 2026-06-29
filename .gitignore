@@ -1,0 +1,21 @@
+# Environment
+.env
+
+# Runtime data
+data/
+logs/
+
+# uv
+uv.lock
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
