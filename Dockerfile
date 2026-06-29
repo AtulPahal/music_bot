@@ -11,13 +11,13 @@ WORKDIR /app
 COPY pyproject.toml ./
 
 # Install dependencies (without the project itself for caching)
-RUN uv sync --frozen --no-install-project --no-dev
+RUN uv sync --no-install-project --no-dev
 
 # Copy source
 COPY . .
 
 # Install the project in the existing venv
-RUN uv sync --frozen --no-dev
+RUN uv sync --no-dev
 
 FROM python:3.12-slim
 
