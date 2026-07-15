@@ -32,13 +32,23 @@ def _load_opus() -> None:
     ]
 
     for path in candidates:
-        if path and os.path.exists(path):
+        if not path:
+            continue
+        # Attempt direct load if it is a relative name (letting ctypes/OS resolve it in search paths)
+        if "/" not in path and "\\" not in path:
             try:
                 discord.opus.load_opus(path)
-                logging.getLogger("bot").info("Loaded libopus from %s", path)
+                logging.getLogger("bot").info("Loaded libopus from system name: %s", path)
                 return
             except Exception as e:
-                logging.getLogger("bot").debug("Failed to load opus from %s: %s", path, e)
+                logging.getLogger("bot").debug("Failed to load opus from system name %s: %s", path, e)
+        elif os.path.exists(path):
+            try:
+                discord.opus.load_opus(path)
+                logging.getLogger("bot").info("Loaded libopus from path: %s", path)
+                return
+            except Exception as e:
+                logging.getLogger("bot").debug("Failed to load opus from path %s: %s", path, e)
 
     logging.getLogger("bot").warning(
         "libopus not found. Audio playback requires libopus. "
