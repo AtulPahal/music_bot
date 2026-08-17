@@ -1,4 +1,4 @@
-# Music Bot
+# Music Bot 
 
 A self-hosted Discord music bot powered by **ytmusicapi** (YouTube Music search and metadata) and **yt-dlp** (audio stream extraction). Plays music in Discord voice channels via FFmpeg.
 
