@@ -24,11 +24,12 @@ RUN uv sync --frozen --no-dev
 # -----------------------------------------------------------------------------
 FROM python:3.12-slim-bookworm AS runner
 
-# Install essential system runtime dependencies for audio streaming and TLS
+# Install essential system runtime dependencies for audio streaming, TLS, and JS engine for yt-dlp
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libopus0 \
     ca-certificates \
+    nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # Prevent Python from writing .pyc files and enable unbuffered output logging

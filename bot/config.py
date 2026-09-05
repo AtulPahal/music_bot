@@ -63,6 +63,14 @@ def _parse_int_list(val: str) -> list[int]:
     return res
 
 
+def _parse_str_list(val: str, default: list[str]) -> list[str]:
+    """Parse a comma-separated list of strings."""
+    if not val:
+        return default
+    items = [item.strip() for item in val.split(",") if item.strip()]
+    return items if items else default
+
+
 def _parse_color(val: str, default: int) -> discord.Color:
     """Parse a hex color or integer into discord.Color."""
     if not val:
@@ -82,7 +90,7 @@ class ConfigError(Exception):
 
 @dataclass
 class DiscordConfig:
-    """Discord connection and bot identity configuration."""
+    """Discord connection, bot identity, and optional web healthcheck port configuration."""
 
     bot_token: str = field(default_factory=lambda: _clean_env("DISCORD_BOT_TOKEN"))
     client_id: str = field(default_factory=lambda: _clean_env("DISCORD_CLIENT_ID"))
@@ -94,6 +102,11 @@ class DiscordConfig:
     activity_type: str = field(default_factory=lambda: _clean_env("ACTIVITY_TYPE", "listening").lower())
     activity_name: str = field(default_factory=lambda: _clean_env("ACTIVITY_NAME", "{prefix}play | {app_name}"))
     presence_status: str = field(default_factory=lambda: _clean_env("PRESENCE_STATUS", "online").lower())
+    port: int = field(
+        default_factory=lambda: _parse_int(
+            _clean_env("PORT", _clean_env("HEALTH_PORT", "0")), 0
+        )
+    )
 
 
 @dataclass
@@ -130,11 +143,21 @@ class AudioConfig:
     ytdl_format: str = field(default_factory=lambda: _clean_env("YTDL_FORMAT", "bestaudio/best"))
     ytdl_proxy: str = field(default_factory=lambda: _clean_env("YT_PROXY", ""))
     ytdl_cookies_file: str = field(default_factory=lambda: _clean_env("YTDL_COOKIES_FILE", ""))
+    ytdl_cookies_text: str = field(
+        default_factory=lambda: _clean_env("YTDL_COOKIES", _clean_env("YTDL_COOKIES_TEXT", ""))
+    )
     ytdl_default_search: str = field(default_factory=lambda: _clean_env("YTDL_DEFAULT_SEARCH", "ytsearch"))
     ytdl_socket_timeout: int = field(
         default_factory=lambda: _parse_int(_clean_env("YTDL_SOCKET_TIMEOUT", "15"), 15)
     )
     ytdl_user_agent: str = field(default_factory=lambda: _clean_env("YTDL_USER_AGENT", ""))
+    ytdl_player_clients: list[str] = field(
+        default_factory=lambda: _parse_str_list(
+            _clean_env("YTDL_PLAYER_CLIENTS", "android,ios,mweb,web"),
+            ["android", "ios", "mweb", "web"],
+        )
+    )
+    ytdl_po_token: str = field(default_factory=lambda: _clean_env("YTDL_PO_TOKEN", ""))
 
 
 @dataclass

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Main executable entry point for MusicBot with dynamic libopus loading and lifecycle orchestration."""
+"""Main executable entry point for MusicBot with dynamic libopus loading, healthcheck server, and lifecycle orchestration."""
 
 from __future__ import annotations
 
@@ -69,6 +69,43 @@ def setup_logging(level: str) -> None:
     )
 
 
+async def _start_health_server(port: int) -> Optional[asyncio.Server]:
+    """Start a lightweight HTTP healthcheck server for cloud hosts requiring an open port (Render, Koyeb, etc.)."""
+    if port <= 0:
+        return None
+
+    log = logging.getLogger("bot.health")
+
+    async def _handle_request(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        try:
+            await reader.readline()
+            response_body = b'{"status":"ok","app":"Music Bot"}\n'
+            response = (
+                b"HTTP/1.1 200 OK\r\n"
+                b"Content-Type: application/json\r\n"
+                b"Content-Length: " + str(len(response_body)).encode("ascii") + b"\r\n"
+                b"Connection: close\r\n\r\n" + response_body
+            )
+            writer.write(response)
+            await writer.drain()
+        except Exception:
+            pass
+        finally:
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except Exception:
+                pass
+
+    try:
+        server = await asyncio.start_server(_handle_request, "0.0.0.0", port)
+        log.info("Healthcheck HTTP server listening on port %d", port)
+        return server
+    except Exception as e:
+        log.warning("Could not start healthcheck server on port %d: %s", port, e)
+        return None
+
+
 async def main() -> None:
     """Asynchronous entry point for application initialization."""
     # 1. Load Configuration
@@ -84,12 +121,15 @@ async def main() -> None:
     # 2. Load Opus Audio Library
     _load_opus(config.voice.libopus_path)
 
-    # 3. Initialize Bot Instance
+    # 3. Start Optional Healthcheck Server (for Render / cloud web services)
+    health_server = await _start_health_server(config.discord.port)
+
+    # 4. Initialize Bot Instance
     from bot.bot import MusicBot
 
     bot = MusicBot(config)
 
-    # 4. Initialize YTMusic Service
+    # 5. Initialize YTMusic Service
     ytmusic = YTMusicService(max_workers=config.ytmusic.max_workers)
     ytmusic.initialize(
         auth_file=config.ytmusic.auth_file,
@@ -99,7 +139,7 @@ async def main() -> None:
     )
     bot.ytmusic = ytmusic
 
-    # 5. Start Bot with Exception Handling
+    # 6. Start Bot with Exception Handling
     try:
         await bot.start(config.discord.bot_token)
     except KeyboardInterrupt:
@@ -114,6 +154,9 @@ async def main() -> None:
     finally:
         if not bot.is_closed():
             await bot.close()
+        if health_server:
+            health_server.close()
+            await health_server.wait_closed()
 
 
 def entry_point() -> None:

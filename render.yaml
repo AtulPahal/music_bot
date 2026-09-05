@@ -1,0 +1,18 @@
+services:
+  - type: worker
+    name: music-bot
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+      - key: DISCORD_CLIENT_ID
+        sync: false
+      - key: DISCORD_GUILD_ID
+        sync: false
+      - key: YT_PROXY
+        sync: false
+      - key: YTDL_COOKIES
+        sync: false
+      - key: YTDL_PO_TOKEN
+        sync: false

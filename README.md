@@ -16,6 +16,7 @@ A production-grade, highly configurable Discord music bot powered by **ytmusicap
 - **Hybrid Commands:** Full parity between Discord Slash Commands (`/`) and text prefix commands (`!play`, `!skip`, etc.).
 - **Voice Channel Auto-Cleanup:** Automatic disconnection when the voice channel becomes empty or after a configurable inactivity timeout.
 - **Global Error Handling:** User-friendly embeds for permission errors, cooldowns, and missing arguments.
+- **Cloud & Container Ready:** Built-in healthcheck HTTP server for Render, Koyeb, Railway, and Docker environments.
 
 ---
 
@@ -68,6 +69,17 @@ python -m bot
 ```bash
 docker compose up -d
 ```
+
+### Render Deployment
+
+When deploying on **Render**:
+1. Create a **Background Worker** (or **Web Service**).
+2. Set Environment Variables:
+   - `DISCORD_BOT_TOKEN`: Your Discord bot token
+   - `DISCORD_CLIENT_ID`: Your Discord application ID
+   - `DISCORD_GUILD_ID`: (Optional) Your Discord server ID for instant command registration
+3. If YouTube blocks cloud datacenter IPs with "Sign in to confirm you're not a bot", add:
+   - `YTDL_COOKIES`: Paste your exported `cookies.txt` content directly as an environment variable in Render.
 
 ### Run Tests
 
@@ -131,6 +143,7 @@ All settings can be customized in `.env`. See `.env.example` for the annotated l
 | `DISCORD_BOT_TOKEN` | *Required* | Discord bot authentication token |
 | `DISCORD_CLIENT_ID` | *Required* | Discord bot application ID |
 | `DISCORD_GUILD_ID` | `0` | Optional guild ID for instant slash command registration |
+| `PORT` | `0` | Port for healthcheck HTTP server (auto-detected on Render) |
 | `COMMAND_PREFIX` | `!` | Text command prefix |
 | `DEFAULT_VOLUME` | `0.5` | Default volume (0.0 to 2.0) |
 | `MAX_QUEUE_LENGTH` | `500` | Maximum songs allowed in queue |
@@ -145,6 +158,7 @@ All settings can be customized in `.env`. See `.env.example` for the annotated l
 | `FFMPEG_BIN` | `ffmpeg` | Path or executable name for FFmpeg |
 | `FFMPEG_OPTIONS` | `-vn -bufsize 64k` | FFmpeg audio output parameters |
 | `YTDL_FORMAT` | `bestaudio/best` | yt-dlp audio format selector |
+| `YTDL_PLAYER_CLIENTS` | `android,ios,mweb,web` | Client fallback order for bypassing datacenter bot checks |
+| `YTDL_COOKIES` | `""` | Raw cookies.txt content pasted into environment variables |
 | `YT_PROXY` | `""` | Optional HTTP/SOCKS5 proxy URL |
-| `YTDL_COOKIES_FILE` | `""` | Optional cookies.txt path for rate-limit bypass |
 | `BUTTON_TIMEOUT` | `180` | Interactive UI component timeout seconds |
