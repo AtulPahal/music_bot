@@ -153,8 +153,14 @@ class AudioConfig:
     ytdl_user_agent: str = field(default_factory=lambda: _clean_env("YTDL_USER_AGENT", ""))
     ytdl_player_clients: list[str] = field(
         default_factory=lambda: _parse_str_list(
-            _clean_env("YTDL_PLAYER_CLIENTS", "android,web"),
-            ["android", "web"],
+            _clean_env("YTDL_PLAYER_CLIENTS", "android"),
+            ["android"],
+        )
+    )
+    ytdl_player_skip: list[str] = field(
+        default_factory=lambda: _parse_str_list(
+            _clean_env("YTDL_PLAYER_SKIP", "configs,webpage"),
+            ["configs", "webpage"],
         )
     )
     ytdl_po_token: str = field(default_factory=lambda: _clean_env("YTDL_PO_TOKEN", ""))

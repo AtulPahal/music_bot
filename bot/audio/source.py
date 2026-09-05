@@ -1,4 +1,4 @@
-"""Audio stream and metadata extraction via yt-dlp with configuration support."""
+"""Audio stream and metadata extraction via yt-dlp with configuration support and datacenter bypass."""
 
 from __future__ import annotations
 
@@ -47,11 +47,13 @@ def build_ydl_options(config: Optional[AudioConfig] = None, proxy: str = "") -> 
     fmt = config.ytdl_format if config else "bestaudio/best"
     socket_timeout = config.ytdl_socket_timeout if config else 15
     default_search = config.ytdl_default_search if config else "ytsearch"
-    player_clients = config.ytdl_player_clients if config else ["android", "ios", "mweb", "web"]
+    player_clients = config.ytdl_player_clients if config else ["android"]
+    player_skip = config.ytdl_player_skip if config else ["configs", "webpage"]
 
     extractor_args: dict[str, Any] = {
         "youtube": {
             "player_client": player_clients,
+            "player_skip": player_skip,
         }
     }
     if config and config.ytdl_po_token:
@@ -103,7 +105,7 @@ def _pick_best_stream_url(info: dict[str, Any]) -> Optional[str]:
     # Filter audio formats that contain an actual direct URL
     valid_audio_formats = [
         f for f in formats
-        if (f.get("acodec") and f.get("acodec") != "none" and (f.get("url") or f.get("manifest_url")))
+        if (f.get("url") or f.get("manifest_url")) and (f.get("acodec") and f.get("acodec") != "none")
     ]
 
     if valid_audio_formats:
@@ -114,7 +116,7 @@ def _pick_best_stream_url(info: dict[str, Any]) -> Optional[str]:
         )
         return best.get("url") or best.get("manifest_url")
 
-    # Fallback to any format with a valid URL
+    # Fallback to any audio or video format with a valid URL
     any_valid = [f for f in formats if f.get("url") or f.get("manifest_url")]
     if any_valid:
         best = max(any_valid, key=lambda f: (f.get("tbr", 0) or 0))
@@ -129,7 +131,7 @@ async def get_stream_url(
     config: Optional[AudioConfig] = None,
     ydl_opts: Optional[dict[str, Any]] = None,
 ) -> Optional[str]:
-    """Extract direct audio-only stream URL for a YouTube video ID or URL."""
+    """Extract direct audio-only stream URL for a YouTube video ID or URL with automatic fallback."""
     url = video_id if video_id.startswith("http") else f"https://youtu.be/{video_id}"
     options = build_ydl_options(config, proxy)
     if ydl_opts:
@@ -138,16 +140,32 @@ async def get_stream_url(
     loop = asyncio.get_running_loop()
 
     def _extract() -> Optional[str]:
-        with yt_dlp.YoutubeDL(options) as ydl:
-            try:
+        # Strategy 1: Primary extraction with android client & webpage skip
+        try:
+            with yt_dlp.YoutubeDL(options) as ydl:
                 info = ydl.extract_info(url, download=False)
-            except Exception as exc:
-                log.warning("yt-dlp extract failed for %s: %s", video_id, exc)
-                return None
+                stream_url = _pick_best_stream_url(info)
+                if stream_url:
+                    return stream_url
+        except Exception as exc:
+            log.warning("Primary yt-dlp extract failed for %s: %s", video_id, exc)
 
-        stream_url = _pick_best_stream_url(info)
-        if stream_url:
-            return stream_url
+        # Strategy 2: Fallback with web_embedded
+        try:
+            fallback_options = dict(options)
+            fallback_options["extractor_args"] = {
+                "youtube": {
+                    "player_client": ["web_embedded", "android"],
+                    "player_skip": ["webpage"],
+                }
+            }
+            with yt_dlp.YoutubeDL(fallback_options) as ydl:
+                info = ydl.extract_info(url, download=False)
+                stream_url = _pick_best_stream_url(info)
+                if stream_url:
+                    return stream_url
+        except Exception as exc:
+            log.warning("Fallback yt-dlp extract failed for %s: %s", video_id, exc)
 
         log.warning("No playable stream format found for %s", video_id)
         return None
