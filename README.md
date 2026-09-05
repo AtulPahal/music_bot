@@ -1,6 +1,6 @@
 # Music Bot
 
-A production-grade, highly configurable Discord music bot powered by **ytmusicapi** (YouTube Music search, playlists, and radio autoplay) and **yt-dlp** (reliable audio stream extraction) playing through **FFmpeg** and **discord.py**.
+A production-grade, highly configurable Discord music bot powered by **ytmusicapi** (YouTube Music search, playlists, and radio autoplay), **yt-dlp** (reliable audio stream extraction), **FFmpeg**, and **Neon Serverless PostgreSQL** (persistent custom playlists and playback history).
 
 **Legal Notice:** This bot is intended for personal and private server use only. Do not host it as a public bot or monetize it. It accesses YouTube Music content via ytmusicapi and yt-dlp.
 
@@ -9,6 +9,7 @@ A production-grade, highly configurable Discord music bot powered by **ytmusicap
 ## Features
 
 - **Rich Playback:** Stream single songs, YouTube Shorts, full YouTube / YouTube Music playlists, and albums.
+- **Neon PostgreSQL Persistence:** Persist custom server playlists (`/saveplaylist`, `/loadplaylist`, `/listplaylists`, `/deleteplaylist`) and historical playback analytics in Neon Serverless Postgres.
 - **Robust Queue Engine:** FIFO queue with repeat modes (`off`, `track`, `queue`), history backtracking (`/back`), shuffling, deduplication (`/removedupes`), position jumping (`/jump`), and track swapping (`/move`).
 - **Interactive Control Panels:** Dynamic `/control` panel and `/queue` paginator with visual progress bars, state indicators, and caller voice channel authorization security.
 - **Radio Autoplay:** Automatic smart recommendations when the queue ends, with interactive "Play Now", "Add to Queue", and "Dismiss" buttons.
@@ -26,7 +27,8 @@ A production-grade, highly configurable Discord music bot powered by **ytmusicap
 - [uv](https://docs.astral.sh/uv/) (`brew install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`)
 - FFmpeg (`brew install ffmpeg`, `apt install ffmpeg`, or `choco install ffmpeg`)
 - Discord Bot Token & Application ID ([Discord Developer Portal](https://discord.com/developers/applications))
-- **Optional:** OAuth / Cookie credentials for YouTube Music (search and streaming work without any authentication)
+- **Optional:** Neon PostgreSQL database connection string (`DATABASE_URL`) for persistent custom playlists.
+- **Optional:** OAuth / Cookie credentials for YouTube Music (search and streaming work without any authentication).
 
 ---
 
@@ -52,6 +54,8 @@ DISCORD_BOT_TOKEN=your_discord_bot_token
 DISCORD_CLIENT_ID=your_application_id
 # Optional: Set your test server ID for instant slash command synchronization
 DISCORD_GUILD_ID=your_guild_id
+# Optional: Neon PostgreSQL connection string
+DATABASE_URL=postgresql://user:pass@ep-lucky-math-aunzva4z-pooler.c-10.us-east-1.aws.neon.tech/musicbot?sslmode=require
 ```
 
 ### 3. Run
@@ -77,7 +81,8 @@ When deploying on **Render**:
 2. Set Environment Variables:
    - `DISCORD_BOT_TOKEN`: Your Discord bot token
    - `DISCORD_CLIENT_ID`: Your Discord application ID
-   - `DISCORD_GUILD_ID`: (Optional) Your Discord server ID for instant command registration
+   - `DISCORD_GUILD_ID`: (Optional) Your Discord server ID
+   - `DATABASE_URL`: (Optional) Your Neon PostgreSQL connection string
 3. If YouTube blocks cloud datacenter IPs with "Sign in to confirm you're not a bot", add:
    - `YTDL_COOKIES`: Paste your exported `cookies.txt` content directly as an environment variable in Render.
 
@@ -121,6 +126,14 @@ uv run pytest -v
 | `/clear` | | Clear all upcoming tracks |
 | `/removedupes` | `dedupe` | Remove duplicate tracks from queue |
 
+### Saved Playlists (Neon PostgreSQL)
+| Command | Aliases | Description |
+|---|---|---|
+| `/saveplaylist <name>` | `savepl` | Save current queue to Neon PostgreSQL |
+| `/loadplaylist <name>` | `loadpl` | Load and play a saved playlist from Neon |
+| `/listplaylists` | `listpl` | List all saved server playlists in Neon |
+| `/deleteplaylist <name>` | `delpl` | Delete a saved playlist from Neon |
+
 ### Utility & Controls
 | Command | Aliases | Description |
 |---|---|---|
@@ -142,6 +155,7 @@ All settings can be customized in `.env`. See `.env.example` for the annotated l
 |---|---|---|
 | `DISCORD_BOT_TOKEN` | *Required* | Discord bot authentication token |
 | `DISCORD_CLIENT_ID` | *Required* | Discord bot application ID |
+| `DATABASE_URL` | `""` | Neon PostgreSQL database connection string |
 | `DISCORD_GUILD_ID` | `0` | Optional guild ID for instant slash command registration |
 | `PORT` | `0` | Port for healthcheck HTTP server (auto-detected on Render) |
 | `COMMAND_PREFIX` | `!` | Text command prefix |
@@ -158,7 +172,7 @@ All settings can be customized in `.env`. See `.env.example` for the annotated l
 | `FFMPEG_BIN` | `ffmpeg` | Path or executable name for FFmpeg |
 | `FFMPEG_OPTIONS` | `-vn -bufsize 64k` | FFmpeg audio output parameters |
 | `YTDL_FORMAT` | `bestaudio/best` | yt-dlp audio format selector |
-| `YTDL_PLAYER_CLIENTS` | `android,ios,mweb,web` | Client fallback order for bypassing datacenter bot checks |
+| `YTDL_PLAYER_CLIENTS` | `android` | Client fallback for bypassing datacenter bot checks |
 | `YTDL_COOKIES` | `""` | Raw cookies.txt content pasted into environment variables |
 | `YT_PROXY` | `""` | Optional HTTP/SOCKS5 proxy URL |
 | `BUTTON_TIMEOUT` | `180` | Interactive UI component timeout seconds |

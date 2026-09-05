@@ -14,6 +14,7 @@ from typing import Optional
 import discord
 
 from bot.config import Config, ConfigError
+from bot.services.database import DatabaseService
 from bot.services.ytmusic import YTMusicService
 
 
@@ -129,7 +130,13 @@ async def main() -> None:
 
     bot = MusicBot(config)
 
-    # 5. Initialize YTMusic Service
+    # 5. Initialize Database Service (Neon / PostgreSQL)
+    db = DatabaseService()
+    if config.database.url:
+        await db.initialize(config.database.url)
+    bot.db = db
+
+    # 6. Initialize YTMusic Service
     ytmusic = YTMusicService(max_workers=config.ytmusic.max_workers)
     ytmusic.initialize(
         auth_file=config.ytmusic.auth_file,
@@ -139,7 +146,7 @@ async def main() -> None:
     )
     bot.ytmusic = ytmusic
 
-    # 6. Start Bot with Exception Handling
+    # 7. Start Bot with Exception Handling
     try:
         await bot.start(config.discord.bot_token)
     except KeyboardInterrupt:

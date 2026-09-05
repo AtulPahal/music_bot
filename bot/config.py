@@ -118,6 +118,7 @@ class DiscordConfig:
         )
     )
 
+
 @dataclass
 class VoiceConfig:
     """Voice channel, timeout, and volume limits configuration."""
@@ -230,6 +231,18 @@ class UIThemeConfig:
 
 
 @dataclass
+class DatabaseConfig:
+    """PostgreSQL / Neon database connection settings."""
+
+    url: str = field(
+        default_factory=lambda: _clean_env(
+            "DATABASE_URL",
+            _clean_env("NEON_DATABASE_URL", ""),
+        )
+    )
+
+
+@dataclass
 class Config:
     """Unified configuration container with typed modular sections."""
 
@@ -238,6 +251,7 @@ class Config:
     audio: AudioConfig = field(default_factory=AudioConfig)
     ytmusic: YTMusicConfig = field(default_factory=YTMusicConfig)
     ui: UIThemeConfig = field(default_factory=UIThemeConfig)
+    database: DatabaseConfig = field(default_factory=DatabaseConfig)
 
     # --- Backwards compatibility properties ---
 
@@ -308,6 +322,10 @@ class Config:
     @property
     def YT_PROXY(self) -> str:
         return self.audio.ytdl_proxy
+
+    @property
+    def DATABASE_URL(self) -> str:
+        return self.database.url
 
     def __post_init__(self) -> None:
         """Validate required configuration settings."""

@@ -10,6 +10,7 @@ bot/audio/player.py
 bot/audio/queue.py
 bot/audio/source.py
 bot/cogs/__init__.py
+bot/cogs/errors.py
 bot/cogs/music.py
 bot/cogs/player_ui.py
 bot/cogs/queue.py
@@ -31,6 +32,8 @@ music_bot.egg-info/entry_points.txt
 music_bot.egg-info/requires.txt
 music_bot.egg-info/top_level.txt
 tests/test_autosuggest.py
+tests/test_config.py
 tests/test_player.py
 tests/test_queue.py
+tests/test_ui.py
 tests/test_ytmusic.py
