@@ -103,11 +103,20 @@ class DiscordConfig:
     activity_name: str = field(default_factory=lambda: _clean_env("ACTIVITY_NAME", "{prefix}play | {app_name}"))
     presence_status: str = field(default_factory=lambda: _clean_env("PRESENCE_STATUS", "online").lower())
     port: int = field(
-        default_factory=lambda: _parse_int(
-            _clean_env("PORT", _clean_env("HEALTH_PORT", "0")), 0
+        default_factory=lambda: (
+            int(os.environ.get("PORT").strip())
+            if os.environ.get("PORT") and os.environ.get("PORT").strip().isdigit()
+            else (
+                int(os.environ.get("HEALTH_PORT").strip())
+                if os.environ.get("HEALTH_PORT") and os.environ.get("HEALTH_PORT").strip().isdigit()
+                else (
+                    10000
+                    if os.environ.get("RENDER") or os.environ.get("RENDER_SERVICE_ID")
+                    else _parse_int(_clean_env("PORT", _clean_env("HEALTH_PORT", "0")), 0)
+                )
+            )
         )
     )
-
 
 @dataclass
 class VoiceConfig:
