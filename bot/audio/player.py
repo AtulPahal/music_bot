@@ -323,7 +323,7 @@ class Player:
                     state.queue.skip()
                     return await self._play_next(guild_id)
                 track.stream_url = url
-
+                log.info("Stream URL resolved successfully for %s", track.video_id)
             state.current_track = track
 
             # Build FFmpeg audio source with configured options
