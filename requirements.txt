@@ -1,6 +1,6 @@
 # Requirements file for pip users.
 #
-# If you use uv (recommended), run `uv sync` instead — it reads
+# If you use uv (recommended), run `uv sync` instead -- it reads
 # dependencies from pyproject.toml directly and handles the lockfile.
 #
 # ## pip usage (without uv):

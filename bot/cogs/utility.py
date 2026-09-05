@@ -1,14 +1,17 @@
-"""Utility commands: join, disconnect, ping, help, owner-only."""
+"""Utility, connection management, diagnostic, and dynamic help commands."""
 
 from __future__ import annotations
 
 import logging
+import platform
+import sys
+import time
 from typing import TYPE_CHECKING
 
 import discord
 from discord.ext import commands
 
-from bot.ui.embeds import error_embed, success_embed
+from bot.ui.embeds import error_embed, info_embed, success_embed
 
 if TYPE_CHECKING:
     from bot.bot import MusicBot
@@ -16,162 +19,168 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-class UtilityCog(commands.Cog):
-    """Bot utility and voice connection management."""
+class UtilityCog(commands.Cog, name="Utility"):
+    """Connection management, diagnostics, and bot information."""
 
     def __init__(self, bot: "MusicBot") -> None:
         self.bot = bot
+        self._start_time = time.time()
 
     @property
     def player(self):
-        return self.bot.get_cog("MusicCog").player if self.bot.get_cog("MusicCog") else None
+        cog = self.bot.get_cog("Music")
+        return cog.player if cog else None
 
-    # --- Join / Disconnect ---
-
-    @commands.hybrid_command(name="join", description="Join your voice channel.")
+    @commands.hybrid_command(name="join", aliases=["connect", "j"], description="Connect the bot to your voice channel.")
     async def join(self, ctx: commands.Context) -> None:
-        if not ctx.author.voice or not ctx.author.voice.channel:
-            await ctx.send(embed=error_embed("You must be in a voice channel first."))
+        """Connect to voice channel."""
+        if not self.player:
+            await ctx.send(embed=error_embed("Music player unavailable.", config=self.bot.config))
             return
 
-        channel = ctx.author.voice.channel
-        if ctx.voice_client:
-            if ctx.voice_client.channel.id == channel.id:
-                await ctx.send(embed=success_embed(f"Already connected to {channel.mention}."))
-                return
-            await ctx.voice_client.move_to(channel)
+        success, err = await self.player.join(ctx)
+        if success:
+            channel = ctx.author.voice.channel
+            await ctx.send(embed=success_embed(f"Connected to {channel.mention}.", config=self.bot.config))
         else:
-            await channel.connect()
-
-        state = self.bot.guild_voice_states.get(ctx.guild.id)
-        if state:
-            state.text_channel_id = ctx.channel.id
-
-        await ctx.send(embed=success_embed(f"Joined {channel.mention}!"))
+            await ctx.send(embed=error_embed(err, config=self.bot.config))
 
     @commands.hybrid_command(name="disconnect", aliases=["dc", "leave"], description="Disconnect the bot from voice.")
     async def disconnect(self, ctx: commands.Context) -> None:
+        """Disconnect and clear voice state."""
         if not ctx.voice_client:
-            await ctx.send(embed=error_embed("I'm not connected to a voice channel."))
+            await ctx.send(embed=error_embed("I am not connected to a voice channel.", config=self.bot.config))
             return
 
-        channel_name = ctx.voice_client.channel.name
-        await ctx.voice_client.disconnect(force=True)
+        channel_name = ctx.voice_client.channel.name if ctx.voice_client.channel else "Voice"
+        if self.player:
+            await self.player.disconnect(ctx.guild.id)
+        else:
+            await ctx.voice_client.disconnect(force=True)
+            self.bot.guild_voice_states.pop(ctx.guild.id, None)
 
-        # Clean up state
-        self.bot.guild_voice_states.pop(ctx.guild.id, None)
+        await ctx.send(embed=success_embed(f"Disconnected from {channel_name}.", config=self.bot.config))
 
-        await ctx.send(embed=success_embed(f"Disconnected from {channel_name}."))
-
-    # --- Ping ---
-
-    @commands.hybrid_command(name="ping", description="Check the bot's latency.")
+    @commands.hybrid_command(name="ping", description="Check bot latency and response time.")
     async def ping(self, ctx: commands.Context) -> None:
-        latency = round(self.bot.latency * 1000)
+        """Check websocket latency."""
+        latency_ms = round(self.bot.latency * 1000)
+        cfg = self.bot.config
         embed = discord.Embed(
             title="Pong!",
-            description=f"Latency: **{latency}ms**",
-            color=discord.Color.green(),
+            description=f"Gateway Latency: **{latency_ms}ms**",
+            color=cfg.ui.color_success if latency_ms < 150 else cfg.ui.color_warning,
         )
         await ctx.send(embed=embed)
 
-    # --- Sync ---
+    @commands.hybrid_command(name="info", aliases=["botinfo", "stats", "about"], description="Display bot runtime statistics.")
+    async def info(self, ctx: commands.Context) -> None:
+        """Show bot stats and system information."""
+        cfg = self.bot.config
+        uptime_sec = int(time.time() - self._start_time)
+        m, s = divmod(uptime_sec, 60)
+        h, m = divmod(m, 60)
+        d, h = divmod(h, 24)
+        uptime_str = f"{d}d {h}h {m}m {s}s" if d else f"{h}h {m}m {s}s"
+
+        embed = discord.Embed(
+            title=f"{cfg.discord.app_name} Information",
+            color=cfg.ui.color_primary,
+        )
+        embed.add_field(name="Servers", value=f"`{len(self.bot.guilds)}`", inline=True)
+        embed.add_field(name="Latency", value=f"`{round(self.bot.latency * 1000)}ms`", inline=True)
+        embed.add_field(name="Uptime", value=f"`{uptime_str}`", inline=True)
+        embed.add_field(name="Python", value=f"`{platform.python_version()}`", inline=True)
+        embed.add_field(name="discord.py", value=f"`{discord.__version__}`", inline=True)
+        embed.add_field(name="Prefix", value=f"`{cfg.discord.command_prefix}`", inline=True)
+
+        if cfg.ui.footer_text:
+            embed.set_footer(text=cfg.ui.footer_text)
+
+        await ctx.send(embed=embed)
 
     @commands.is_owner()
-    @commands.hybrid_command(name="sync", description="Force re-sync slash commands (owner only).")
+    @commands.hybrid_command(name="sync", description="Synchronize application slash commands with Discord (Owner Only).")
     async def sync(self, ctx: commands.Context, reset_global: bool = False) -> None:
-        """Force re-sync slash commands with Discord.
-
-        Run this if slash commands show the wrong parameters or "command signature mismatch".
-
-        Parameters
-        -----------
-        reset_global: If True, clears ALL global commands first (fixes stale global cache).
-        """
+        """Force re-synchronize slash commands with Discord."""
         await ctx.defer(ephemeral=True)
         try:
-            # Optionally wipe global commands first
             if reset_global:
                 self.bot.tree.clear_commands(guild=None)
                 await self.bot.tree.sync()
-                log.info("Cleared all global slash commands")
+                log.info("Reset all global slash commands")
 
-            # Re-sync globally first
             global_synced = await self.bot.tree.sync()
+            count = len(global_synced)
 
-            # Then sync to guild
-            if self.bot.config.DISCORD_GUILD_ID:
-                guild = discord.Object(id=self.bot.config.DISCORD_GUILD_ID)
+            if self.bot.config.discord.guild_id:
+                guild = discord.Object(id=self.bot.config.discord.guild_id)
                 self.bot.tree.clear_commands(guild=guild)
                 self.bot.tree.copy_global_to(guild=guild)
                 guild_synced = await self.bot.tree.sync(guild=guild)
-                total = len(guild_synced)
-            else:
-                total = len(global_synced)
+                count = len(guild_synced)
 
-            msg = f"Synced **{total}** slash command{'s' if total != 1 else ''}."
+            msg = f"Successfully synced {count} slash command{'s' if count != 1 else ''}."
             if reset_global:
-                msg += "\n✅ Global commands reset."
-            msg += "\nChanges may take a few seconds to appear."
-
-            await ctx.send(embed=success_embed(msg))
+                msg += "\nGlobal command cache cleared."
+            await ctx.send(embed=success_embed(msg, title="Commands Synced", config=self.bot.config))
         except Exception as e:
-            await ctx.send(embed=error_embed(f"Sync failed: {e}"))
+            log.error("Sync command failed: %s", e)
+            await ctx.send(embed=error_embed(f"Failed to sync slash commands: {e}", config=self.bot.config))
 
-    # --- Help ---
+    @commands.hybrid_command(name="help", description="Show full list of available commands.")
+    async def help(self, ctx: commands.Context, command_name: str | None = None) -> None:
+        """Dynamic help menu reading directly from loaded cogs and registered commands."""
+        cfg = self.bot.config
+        prefix = cfg.discord.command_prefix
 
-    @commands.hybrid_command(name="help", description="Show available commands.")
-    async def help(self, ctx: commands.Context) -> None:
+        # Specific command help
+        if command_name:
+            cmd = self.bot.get_command(command_name)
+            if not cmd:
+                await ctx.send(
+                    embed=error_embed(f"Command `{command_name}` was not found.", config=self.bot.config)
+                )
+                return
+
+            embed = discord.Embed(
+                title=f"Command: {prefix}{cmd.qualified_name}",
+                description=cmd.help or cmd.description or "No description provided.",
+                color=cfg.ui.color_primary,
+            )
+            if cmd.aliases:
+                embed.add_field(name="Aliases", value=", ".join(f"`{a}`" for a in cmd.aliases), inline=False)
+            usage = f"/{cmd.qualified_name} {cmd.signature}".strip()
+            embed.add_field(name="Usage", value=f"`{usage}`", inline=False)
+            await ctx.send(embed=embed)
+            return
+
+        # Overall help menu dynamically grouped by Cog
         embed = discord.Embed(
-            title=f"{self.bot.config.DISCORD_APP_NAME} Commands",
-            description="Here are the available commands. Use `/` for slash commands.",
-            color=discord.Color.blue(),
+            title=f"{cfg.discord.app_name} Commands",
+            description=f"Use `/{command_name}` or `{prefix}{command_name}` to run commands.",
+            color=cfg.ui.color_primary,
         )
 
-        embed.add_field(
-            name="Music",
-            value=(
-                "`/play <song/url>` - Play a song or add to queue\n"
-                "`/addq <song/url>` - Add to queue (starts if idle)\n"
-                "`/playskip <song>` - Play immediately, skipping current\n"
-                "`/playtop <song>` - Add to top of queue\n"
-                "`/back` - Go back to previous track\n"
-                "`/pause` - Pause playback\n"
-                "`/resume` - Resume playback\n"
-                "`/skip` / `next` - Skip current track\n"
-                "`/stop` - Stop and clear queue\n"
-                "`/nowplaying` - Show current track\n"
-                "`/volume <0-200>` - Set volume"
-            ),
-            inline=False,
-        )
+        for cog_name, cog in self.bot.cogs.items():
+            cmd_list = []
+            for cmd in cog.get_commands():
+                if cmd.hidden:
+                    continue
+                cmd_desc = cmd.description or cmd.help or "No description."
+                cmd_list.append(f"`/{cmd.name}` - {cmd_desc}")
 
-        embed.add_field(
-            name="Queue",
-            value=(
-                "`/queue` / `qlist` - Show the queue\n"
-                "`/history` - Show recently played\n"
-                "`/search <query>` - Search and pick a result\n"
-                "`/shuffle` - Shuffle the queue\n"
-                "`/loop` - Toggle loop mode\n"
-                "`/remove <position>` - Remove a track\n"
-                "`/move <from> <to>` - Move a track\n"
-                "`/clear` - Clear the queue"
-            ),
-            inline=False,
-        )
+            if cmd_list:
+                embed.add_field(
+                    name=f"{cog_name}",
+                    value="\n".join(cmd_list),
+                    inline=False,
+                )
 
-        embed.add_field(
-            name="Utility",
-            value=(
-                "`/join` - Join your voice channel\n"
-                "`/disconnect` - Disconnect from voice\n"
-                "`/ping` - Check latency\n"
-                "`/sync` - Re-sync slash commands (owner only)\n"
-                "`/help` - Show this message"
-            ),
-            inline=False,
-        )
+        footer = f"Type {prefix}help <command> for command details."
+        if cfg.ui.footer_text:
+            footer = f"{footer} | {cfg.ui.footer_text}"
+        embed.set_footer(text=footer)
 
         await ctx.send(embed=embed)
 

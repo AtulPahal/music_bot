@@ -1,54 +1,25 @@
-"""Main MusicBot class — extends commands.Bot with per-guild voice state."""
+"""Main MusicBot class extending commands.Bot with guild voice state tracking and lifecycle control."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import discord
 from discord.ext import commands
 
-from bot.audio.queue import RepeatMode, Track
-from bot.config import Config, ConfigError
+from bot.audio.player import GuildVoiceState
+from bot.config import Config
+
+if TYPE_CHECKING:
+    from bot.services.ytmusic import YTMusicService
 
 log = logging.getLogger(__name__)
 
 
-class GuildVoiceState:
-    """Per-guild audio playback state."""
-
-    def __init__(self) -> None:
-        from bot.audio.queue import Queue
-
-        self.voice_client: Optional[discord.VoiceClient] = None
-        self.text_channel_id: int = 0
-        self.current_track: Optional["Track"] = None
-        self.queue: Queue = Queue()
-        self.repeat_mode: "RepeatMode" = RepeatMode.OFF
-        self.shuffle: bool = False
-        self.volume: float = 0.5
-        self._disconnect_task: Optional[asyncio.Task] = None
-        self.lock = asyncio.Lock()
-        self.suggested_track: Optional["Track"] = None
-        self._suggest_task: Optional[asyncio.Task] = None
-        self._back_requested: bool = False
-
-    @property
-    def is_playing(self) -> bool:
-        return self.voice_client is not None and self.voice_client.is_playing()
-
-    @property
-    def is_paused(self) -> bool:
-        return self.voice_client is not None and self.voice_client.is_paused()
-
-    @property
-    def is_connected(self) -> bool:
-        return self.voice_client is not None and self.voice_client.is_connected()
-
-
 class MusicBot(commands.Bot):
-    """Custom bot subclass holding per-guild state and services."""
+    """Custom bot subclass managing per-guild playback states, cogs, and slash synchronization."""
 
     def __init__(self, config: Config) -> None:
         intents = discord.Intents.default()
@@ -56,17 +27,18 @@ class MusicBot(commands.Bot):
         intents.voice_states = True
 
         super().__init__(
-            command_prefix=commands.when_mentioned_or(config.COMMAND_PREFIX),
+            command_prefix=commands.when_mentioned_or(config.discord.command_prefix),
             intents=intents,
             help_command=None,
         )
 
-        self.config = config
+        self.config: Config = config
         self.guild_voice_states: dict[int, GuildVoiceState] = {}
-        self.ytmusic: Optional["YTMusicService"] = None  # noqa: UP037
+        self.ytmusic: Optional["YTMusicService"] = None
 
     async def setup_hook(self) -> None:
-        """Load cogs and sync slash commands."""
+        """Load cogs and synchronize application command tree."""
+        from bot.cogs.errors import ErrorHandlerCog
         from bot.cogs.music import MusicCog
         from bot.cogs.player_ui import PlayerUICog
         from bot.cogs.queue import QueueCog
@@ -76,70 +48,97 @@ class MusicBot(commands.Bot):
         await self.add_cog(QueueCog(self))
         await self.add_cog(PlayerUICog(self))
         await self.add_cog(UtilityCog(self))
+        await self.add_cog(ErrorHandlerCog(self))
 
-        # Register tree error handler for auto-sync on signature mismatch
+        # Command tree error handler
         @self.tree.error
         async def on_tree_error(
             interaction: discord.Interaction,
             error: discord.app_commands.AppCommandError,
         ) -> None:
             if isinstance(error, discord.app_commands.CommandSignatureMismatch):
-                log.warning(
-                    "Command signature mismatch, forcing re-sync for guild %s",
-                    interaction.guild_id,
-                )
+                log.warning("Slash signature mismatch detected. Syncing commands for guild: %s", interaction.guild_id)
                 try:
                     if interaction.guild_id:
-                        guild = discord.Object(id=interaction.guild_id)
-                        self.tree.clear_commands(guild=guild)
-                        self.tree.copy_global_to(guild=guild)
-                        synced = await self.tree.sync(guild=guild)
-                        log.info("Auto-synced %d commands to guild", len(synced))
+                        guild_obj = discord.Object(id=interaction.guild_id)
+                        self.tree.clear_commands(guild=guild_obj)
+                        self.tree.copy_global_to(guild=guild_obj)
+                        await self.tree.sync(guild=guild_obj)
                     else:
-                        synced = await self.tree.sync()
-                        log.info("Auto-synced %d commands globally", len(synced))
+                        await self.tree.sync()
                 except Exception as exc:
-                    log.error("Auto-sync failed: %s", exc)
+                    log.error("Tree auto-sync error: %s", exc)
 
-                # Tell the user to retry
                 if not interaction.response.is_done():
                     await interaction.response.send_message(
-                        "Slash commands have been refreshed. Please try `/play` again.",
+                        "Slash commands have been re-synchronized. Please try your command again.",
                         ephemeral=True,
                     )
                 return
 
-            # Re-raise other tree errors so they still get logged
-            log.error("Tree error: %s", error)
+            log.error("Unhandled slash command tree error: %s", error)
 
-        # Always sync globally first to register commands in the global tree
+        # Global command sync
         global_synced = await self.tree.sync()
-        log.info("Slash commands synced globally (%d commands)", len(global_synced))
+        log.info("Registered %d slash commands globally.", len(global_synced))
 
-        # Then sync to guild for instant availability (overwrites stale cache)
-        if self.config.DISCORD_GUILD_ID:
-            guild = discord.Object(id=self.config.DISCORD_GUILD_ID)
-            self.tree.clear_commands(guild=guild)
-            self.tree.copy_global_to(guild=guild)
-            guild_synced = await self.tree.sync(guild=guild)
-            log.info(
-                "Slash commands synced to guild %s (%d commands)",
-                self.config.DISCORD_GUILD_ID,
-                len(guild_synced),
-            )
+        # Guild-specific instant sync if configured
+        if self.config.discord.guild_id:
+            guild_obj = discord.Object(id=self.config.discord.guild_id)
+            self.tree.clear_commands(guild=guild_obj)
+            self.tree.copy_global_to(guild=guild_obj)
+            guild_synced = await self.tree.sync(guild=guild_obj)
+            log.info("Registered %d slash commands for guild %s.", len(guild_synced), self.config.discord.guild_id)
+
+    def _get_activity(self) -> discord.Activity:
+        """Construct Discord activity from configuration templates."""
+        raw_name = self.config.discord.activity_name.format(
+            prefix=self.config.discord.command_prefix,
+            app_name=self.config.discord.app_name,
+        )
+        act_type_str = self.config.discord.activity_type.lower()
+        act_type = {
+            "listening": discord.ActivityType.listening,
+            "playing": discord.ActivityType.playing,
+            "watching": discord.ActivityType.watching,
+            "competing": discord.ActivityType.competing,
+            "streaming": discord.ActivityType.streaming,
+        }.get(act_type_str, discord.ActivityType.listening)
+
+        return discord.Activity(type=act_type, name=raw_name)
+
+    def _get_status(self) -> discord.Status:
+        """Get Discord status from configuration."""
+        status_map = {
+            "online": discord.Status.online,
+            "idle": discord.Status.idle,
+            "dnd": discord.Status.dnd,
+            "invisible": discord.Status.invisible,
+        }
+        return status_map.get(self.config.discord.presence_status.lower(), discord.Status.online)
 
     async def on_ready(self) -> None:
-        log.info("Bot logged in as %s (ID: %s)", self.user, self.user.id)
+        log.info("Logged in as %s (ID: %s)", self.user, self.user.id if self.user else "Unknown")
         await self.change_presence(
-            activity=discord.Activity(
-                type=discord.ActivityType.listening,
-                name=f"{self.config.COMMAND_PREFIX}play | ytmusic",
-            )
+            activity=self._get_activity(),
+            status=self._get_status(),
         )
 
     async def close(self) -> None:
-        """Clean up voice connections on shutdown."""
-        for state in self.guild_voice_states.values():
+        """Clean shutdown of voice connections and services."""
+        log.info("Closing bot voice connections and services...")
+        for state in list(self.guild_voice_states.values()):
+            if state._disconnect_task and not state._disconnect_task.done():
+                state._disconnect_task.cancel()
+            if state._suggest_task and not state._suggest_task.done():
+                state._suggest_task.cancel()
             if state.voice_client and state.voice_client.is_connected():
-                await state.voice_client.disconnect(force=True)
+                try:
+                    await state.voice_client.disconnect(force=True)
+                except Exception:
+                    pass
+
+        if self.ytmusic:
+            await self.ytmusic.close()
+
         await super().close()

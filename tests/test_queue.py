@@ -60,9 +60,9 @@ class TestQueue:
         assert q.skip() is None
 
     def test_skip_end_of_queue(self, queue):
-        queue.skip()  # A → B
-        queue.skip()  # B → C
-        queue.skip()  # C → None
+        queue.skip()  # A -> B
+        queue.skip()  # B -> C
+        queue.skip()  # C -> None
         assert queue.current is None
 
     def test_skip_track_loop(self, queue):
@@ -74,9 +74,9 @@ class TestQueue:
 
     def test_skip_queue_loop(self, queue):
         queue.repeat_mode = RepeatMode.QUEUE
-        queue.skip()  # A → B
-        queue.skip()  # B → C
-        queue.skip()  # C → back to A
+        queue.skip()  # A -> B
+        queue.skip()  # B -> C
+        queue.skip()  # C -> back to A
         assert queue.current is not None
         assert queue.current.video_id == "abc123"
 
@@ -153,6 +153,25 @@ class TestQueue:
         fake = Track(video_id="nonexistent", title="Fake")
         assert not queue.set_position_by_track(fake)
 
+
+    def test_extend(self, queue):
+        new_tracks = [
+            Track(video_id="ext1", title="Ext 1", duration=120),
+            Track(video_id="ext2", title="Ext 2", duration=150),
+        ]
+        added = queue.extend(new_tracks)
+        assert added == 2
+        assert queue.length == 5
+
+    def test_jump_to(self, queue):
+        target = queue.jump_to(2)
+        assert target is not None
+        assert target.video_id == "ghi789"
+        assert queue.position == 2
+
+    def test_total_duration(self, queue):
+        # sample_tracks durations: 180, 240, 200. At pos 0, upcoming are 240 + 200 = 440
+        assert queue.total_duration == 440
 
 class TestTrack:
     def test_display_with_artists(self):

@@ -1,4 +1,4 @@
-"""Player UI commands: interactive control buttons and nowplaying enhancements."""
+"""Player UI commands and event listeners for voice state management."""
 
 from __future__ import annotations
 
@@ -18,31 +18,36 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-class PlayerUICog(commands.Cog):
-    """Interactive control panels and UI enhancements."""
+class PlayerUICog(commands.Cog, name="Controls"):
+    """Interactive control panels and automatic voice channel cleanup."""
 
     def __init__(self, bot: "MusicBot") -> None:
         self.bot = bot
 
     @property
     def player(self):
-        from bot.cogs.music import MusicCog
-        cog = self.bot.get_cog("MusicCog")
+        cog = self.bot.get_cog("Music")
         return cog.player if cog else None
 
-    @commands.hybrid_command(name="control", description="Open an interactive music control panel.")
+    @commands.hybrid_command(name="control", aliases=["panel", "c"], description="Open an interactive music control panel.")
     @in_voice()
     @same_voice()
     async def control(self, ctx: commands.Context) -> None:
-        """Send an embed with interactive music control buttons."""
-        state = self.player.get_state(ctx.guild.id) if self.player else None
-        if not state or not state.current_track:
-            await ctx.send(embed=error_embed("Nothing is currently playing."))
+        """Send an interactive control panel for current playback."""
+        if not self.player:
             return
 
-        track = state.current_track
-        embed = nowplaying_embed(track, state)
+        state = self.player.get_state(ctx.guild.id)
+        if not state or not state.current_track:
+            await ctx.send(embed=error_embed("Nothing is currently playing.", config=self.bot.config))
+            return
 
+        embed = nowplaying_embed(
+            state.current_track,
+            state,
+            config=self.bot.config,
+            position_sec=state.elapsed_seconds,
+        )
         view = MusicControls(self.bot, ctx.guild.id)
         await ctx.send(embed=embed, view=view)
 
@@ -53,22 +58,26 @@ class PlayerUICog(commands.Cog):
         before: discord.VoiceState,
         after: discord.VoiceState,
     ) -> None:
-        """Auto-disconnect when everyone leaves the voice channel."""
+        """Auto-disconnect cleanly when all non-bot users leave the voice channel."""
         if member.bot:
             return
 
         guild = member.guild
         state = self.bot.guild_voice_states.get(guild.id)
-        if not state or not state.voice_client:
+        if not state or not state.voice_client or not state.voice_client.channel:
             return
 
-        # Check if bot is in a voice channel and all non-bot members have left
         vc = state.voice_client.channel
-        if vc and len([m for m in vc.members if not m.bot]) == 0:
-            log.info("All users left %s in %s, disconnecting.", vc.name, guild.name)
-            if state.voice_client and state.voice_client.is_connected():
-                await state.voice_client.disconnect(force=True)
-            self.bot.guild_voice_states.pop(guild.id, None)
+        human_members = [m for m in vc.members if not m.bot]
+        if len(human_members) == 0:
+            log.info("All human users left voice channel '%s' in guild '%s'. Disconnecting.", vc.name, guild.name)
+            music_cog = self.bot.get_cog("Music")
+            if music_cog:
+                await music_cog.player.disconnect(guild.id)
+            else:
+                if state.voice_client.is_connected():
+                    await state.voice_client.disconnect(force=True)
+                self.bot.guild_voice_states.pop(guild.id, None)
 
 
 async def setup(bot: "MusicBot") -> None:

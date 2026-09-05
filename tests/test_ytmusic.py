@@ -7,8 +7,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from bot.services.ytmusic import YTMusicService
-from bot.utils.url_helpers import extract_video_id, is_youtube_url
-
+from bot.utils.url_helpers import (
+    extract_playlist_id,
+    extract_video_id,
+    is_playlist_url,
+    is_youtube_url,
+)
 
 class TestYTMusicService:
     def test_initial_not_available(self):
@@ -56,3 +60,19 @@ class TestURLHelpers:
     )
     def test_is_youtube_url(self, text, expected):
         assert is_youtube_url(text) == expected
+
+    @pytest.mark.parametrize(
+        "url,expected",
+        [
+            ("https://www.youtube.com/playlist?list=PL1234567890abcdef", "PL1234567890abcdef"),
+            ("https://music.youtube.com/playlist?list=PLxyz_123", "PLxyz_123"),
+            ("https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PL98765", "PL98765"),
+            ("https://youtu.be/dQw4w9WgXcQ", None),
+        ],
+    )
+    def test_extract_playlist_id(self, url, expected):
+        assert extract_playlist_id(url) == expected
+
+    def test_is_playlist_url(self):
+        assert is_playlist_url("https://www.youtube.com/playlist?list=PL123") is True
+        assert is_playlist_url("https://youtu.be/dQw4w9WgXcQ") is False
