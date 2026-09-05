@@ -1,4 +1,4 @@
-"""Main MusicBot class extending commands.Bot with guild voice state tracking, database services, and lifecycle control."""
+"""Main MusicBot class extending commands.Bot with guild voice state tracking and lifecycle control."""
 
 from __future__ import annotations
 
@@ -13,14 +13,13 @@ from bot.audio.player import GuildVoiceState
 from bot.config import Config
 
 if TYPE_CHECKING:
-    from bot.services.database import DatabaseService
     from bot.services.ytmusic import YTMusicService
 
 log = logging.getLogger(__name__)
 
 
 class MusicBot(commands.Bot):
-    """Custom bot subclass managing per-guild playback states, database persistence, and slash synchronization."""
+    """Custom bot subclass managing per-guild playback states and slash synchronization."""
 
     def __init__(self, config: Config) -> None:
         intents = discord.Intents.default()
@@ -36,14 +35,12 @@ class MusicBot(commands.Bot):
         self.config: Config = config
         self.guild_voice_states: dict[int, GuildVoiceState] = {}
         self.ytmusic: Optional["YTMusicService"] = None
-        self.db: Optional["DatabaseService"] = None
 
     async def setup_hook(self) -> None:
         """Load cogs and synchronize application command tree."""
         from bot.cogs.errors import ErrorHandlerCog
         from bot.cogs.music import MusicCog
         from bot.cogs.player_ui import PlayerUICog
-        from bot.cogs.playlist import PlaylistCog
         from bot.cogs.queue import QueueCog
         from bot.cogs.utility import UtilityCog
 
@@ -51,7 +48,6 @@ class MusicBot(commands.Bot):
         await self.add_cog(QueueCog(self))
         await self.add_cog(PlayerUICog(self))
         await self.add_cog(UtilityCog(self))
-        await self.add_cog(PlaylistCog(self))
         await self.add_cog(ErrorHandlerCog(self))
 
         # Command tree error handler
@@ -129,7 +125,7 @@ class MusicBot(commands.Bot):
         )
 
     async def close(self) -> None:
-        """Clean shutdown of voice connections, database, and services."""
+        """Clean shutdown of voice connections and services."""
         log.info("Closing bot voice connections and services...")
         for state in list(self.guild_voice_states.values()):
             if state._disconnect_task and not state._disconnect_task.done():
@@ -144,8 +140,5 @@ class MusicBot(commands.Bot):
 
         if self.ytmusic:
             await self.ytmusic.close()
-
-        if self.db:
-            await self.db.close()
 
         await super().close()

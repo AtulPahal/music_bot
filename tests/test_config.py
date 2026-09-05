@@ -68,16 +68,6 @@ class TestConfigValidation:
             assert config.DEFAULT_VOLUME == 0.5
             assert config.MAX_QUEUE_LENGTH == 500
 
-            assert config.DATABASE_URL == ""
-
-    def test_database_url_from_env(self):
-        with patch.dict(os.environ, {
-            "DISCORD_BOT_TOKEN": "token",
-            "DISCORD_CLIENT_ID": "123",
-            "DATABASE_URL": "postgresql://user:pass@ep-test.aws.neon.tech/db",
-        }):
-            config = Config()
-            assert "neon.tech" in config.DATABASE_URL
     def test_missing_token_raises(self):
         with patch.dict(os.environ, {
             "DISCORD_BOT_TOKEN": "",

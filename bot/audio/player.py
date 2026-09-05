@@ -358,17 +358,6 @@ class Player:
             try:
                 state.voice_client.play(volume_source, after=_after_callback)
                 log.info("Playback started: '%s' in guild %s (vol=%.2f)", track.title, guild_id, state.volume)
-                if hasattr(self.bot, "db") and self.bot.db and self.bot.db.is_connected:
-                    asyncio.create_task(
-                        self.bot.db.record_history(
-                            guild_id=guild_id,
-                            user_id=track.requester_id,
-                            video_id=track.video_id,
-                            title=track.title,
-                            artist=track.artist_str,
-                            duration=track.duration,
-                        )
-                    )
                 return True
             except Exception as e:
                 log.exception("voice_client.play exception in guild %s: %s", guild_id, e)
